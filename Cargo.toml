@@ -1,0 +1,9 @@
+[package]
+name = "facet-owned-shape"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+facet = "0.31.4"
+facet-core = "0.31.4"
+facet-reflect = "0.31.4"

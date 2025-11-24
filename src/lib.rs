@@ -1,4 +1,5 @@
 pub mod diff;
+pub mod sea_query;
 
 use facet::Facet;
 

@@ -7,3 +7,7 @@ edition = "2024"
 facet = "0.31.4"
 facet-core = "0.31.4"
 facet-reflect = "0.31.4"
+sea-query = { version = "0.32.7", default-features = false }
+
+[dev-dependencies]
+sea-query = { version = "0.32.7", features = ["backend-postgres"] }

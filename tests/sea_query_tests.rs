@@ -79,7 +79,7 @@ fn test_diff_add_columns() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v2 = OwnedShape::try_from(UserV2::SHAPE).unwrap();
 
-    let diff = Diff::new(&v1, &v2);
+    let diff = Diff::new(&v1.into(), &v2.into());
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
 
@@ -98,7 +98,7 @@ fn test_diff_drop_columns() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v3 = OwnedShape::try_from(UserV3::SHAPE).unwrap();
 
-    let diff = Diff::new(&v1, &v3);
+    let diff = Diff::new(&v1.into(), &v3.into());
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
 
@@ -118,7 +118,7 @@ fn test_diff_add_and_drop() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v4 = OwnedShape::try_from(UserV4::SHAPE).unwrap();
 
-    let diff = Diff::new(&v1, &v4);
+    let diff = Diff::new(&v1.into(), &v4.into());
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
 
@@ -137,7 +137,7 @@ fn test_diff_type_change_i32_to_string() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v5 = OwnedShape::try_from(UserV5::SHAPE).unwrap();
 
-    let diff = Diff::new(&v1, &v5);
+    let diff = Diff::new(&v1.into(), &v5.into());
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
 
@@ -156,7 +156,7 @@ fn test_diff_type_change_i32_to_i64() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v6 = OwnedShape::try_from(UserV6::SHAPE).unwrap();
 
-    let diff = Diff::new(&v1, &v6);
+    let diff = Diff::new(&v1.into(), &v6.into());
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
 
@@ -175,7 +175,7 @@ fn test_diff_incompatible_type_change() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v7 = OwnedShape::try_from(UserV7::SHAPE).unwrap();
 
-    let diff = Diff::new(&v1, &v7);
+    let diff = Diff::new(&v1.into(), &v7.into());
     let res: Result<TableAlterStatement, String> = diff.try_into();
 
     assert!(res.is_err());
@@ -187,7 +187,7 @@ fn test_diff_equal_error() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v1_copy = OwnedShape::try_from(UserV1::SHAPE).unwrap();
 
-    let diff = Diff::new(&v1, &v1_copy);
+    let diff = Diff::new(&v1.into(), &v1_copy.into());
     let res: Result<TableAlterStatement, String> = diff.try_into();
 
     assert!(res.is_err());

@@ -1,9 +1,9 @@
 use crate::{
-    diff::{Diff, Value},
-    owned_shape::{
-        OwnedDef, OwnedNumericType, OwnedPrimitiveType, OwnedShape, OwnedTextualType, OwnedType,
-        OwnedUserType,
+    cow_shape::{
+        CowDef, CowNumericType, CowPrimitiveType, CowShape, CowTextualType, CowType, CowUserType,
     },
+    diff::{Diff, Value},
+    owned_shape::OwnedShape,
 };
 use sea_query::{ColumnDef, Table, TableAlterStatement, TableCreateStatement};
 
@@ -11,15 +11,16 @@ impl TryFrom<OwnedShape> for TableCreateStatement {
     type Error = String;
 
     fn try_from(shape: OwnedShape) -> Result<Self, Self::Error> {
-        match *shape.ty {
-            OwnedType::User(OwnedUserType::Struct(s)) => {
+        let shape: CowShape = shape.into();
+        match shape.ty.as_ref() {
+            CowType::User(CowUserType::Struct(s)) => {
                 let mut table = Table::create();
-                table.table(sea_query::Alias::new(&shape.type_identifier));
+                table.table(sea_query::Alias::new(shape.type_identifier.as_ref()));
 
-                for field in s.fields {
-                    let mut col = ColumnDef::new(sea_query::Alias::new(&field.name));
+                for field in &s.fields {
+                    let mut col = ColumnDef::new(sea_query::Alias::new(field.name.as_ref()));
 
-                    let is_nullable = matches!(*field.shape.def, OwnedDef::Option(_));
+                    let is_nullable = matches!(field.shape.def.as_ref(), CowDef::Option(_));
                     if is_nullable {
                         col.null();
                     } else {
@@ -41,10 +42,10 @@ impl TryFrom<OwnedShape> for TableCreateStatement {
     }
 }
 
-impl TryFrom<Diff> for TableAlterStatement {
+impl<'a> TryFrom<Diff<'a>> for TableAlterStatement {
     type Error = String;
 
-    fn try_from(diff: Diff) -> Result<Self, Self::Error> {
+    fn try_from(diff: Diff<'a>) -> Result<Self, Self::Error> {
         match diff {
             Diff::Equal => {
                 Err("Cannot create ALTER TABLE from Equal diff - no changes needed".to_string())
@@ -65,10 +66,10 @@ impl TryFrom<Diff> for TableAlterStatement {
                     unchanged: _,
                 } => {
                     let mut alter = Table::alter();
-                    alter.table(sea_query::Alias::new(&to.type_identifier));
+                    alter.table(sea_query::Alias::new(to.type_identifier.as_ref()));
 
-                    let to_struct = match *to.ty {
-                        OwnedType::User(OwnedUserType::Struct(s)) => s,
+                    let to_struct = match to.ty.as_ref() {
+                        CowType::User(CowUserType::Struct(s)) => s,
                         _ => return Err("Expected 'to' shape to be a struct".to_string()),
                     };
 
@@ -76,14 +77,14 @@ impl TryFrom<Diff> for TableAlterStatement {
                         let field = to_struct
                             .fields
                             .iter()
-                            .find(|f| &f.name == field_name)
+                            .find(|f| f.name.as_ref() == field_name)
                             .ok_or_else(|| {
                                 format!("Field '{}' not found in 'to' struct", field_name)
                             })?;
 
-                        let mut col = ColumnDef::new(sea_query::Alias::new(&field.name));
+                        let mut col = ColumnDef::new(sea_query::Alias::new(field.name.as_ref()));
 
-                        let is_nullable = matches!(*field.shape.def, OwnedDef::Option(_));
+                        let is_nullable = matches!(field.shape.def.as_ref(), CowDef::Option(_));
                         if is_nullable {
                             col.null();
                         } else {
@@ -99,7 +100,7 @@ impl TryFrom<Diff> for TableAlterStatement {
                         let to_field = to_struct
                             .fields
                             .iter()
-                            .find(|f| &f.name == field_name)
+                            .find(|f| f.name.as_ref() == field_name)
                             .ok_or_else(|| {
                                 format!("Field '{}' not found in 'to' struct", field_name)
                             })?;
@@ -111,9 +112,9 @@ impl TryFrom<Diff> for TableAlterStatement {
                             ));
                         }
 
-                        let mut col = ColumnDef::new(sea_query::Alias::new(&to_field.name));
+                        let mut col = ColumnDef::new(sea_query::Alias::new(to_field.name.as_ref()));
 
-                        let is_nullable = matches!(*to_field.shape.def, OwnedDef::Option(_));
+                        let is_nullable = matches!(to_field.shape.def.as_ref(), CowDef::Option(_));
                         if is_nullable {
                             col.null();
                         } else {
@@ -146,39 +147,29 @@ fn is_compatible_type_change(diff: &Diff) -> Result<bool, String> {
             let from_inner = unwrap_option_type(from);
             let to_inner = unwrap_option_type(to);
 
-            match (&*from_inner.ty, &*to_inner.ty) {
-                (OwnedType::Primitive(from_p), OwnedType::Primitive(to_p)) => {
-                    match (from_p, to_p) {
-                        (OwnedPrimitiveType::Numeric(_), OwnedPrimitiveType::Numeric(_)) => {
-                            Ok(true)
-                        }
+            match (from_inner.ty.as_ref(), to_inner.ty.as_ref()) {
+                (CowType::Primitive(from_p), CowType::Primitive(to_p)) => match (from_p, to_p) {
+                    (CowPrimitiveType::Numeric(_), CowPrimitiveType::Numeric(_)) => Ok(true),
 
-                        (OwnedPrimitiveType::Numeric(_), OwnedPrimitiveType::Textual(_)) => {
-                            Ok(true)
-                        }
+                    (CowPrimitiveType::Numeric(_), CowPrimitiveType::Textual(_)) => Ok(true),
 
-                        (OwnedPrimitiveType::Textual(_), OwnedPrimitiveType::Numeric(_)) => {
-                            Ok(true)
-                        }
+                    (CowPrimitiveType::Textual(_), CowPrimitiveType::Numeric(_)) => Ok(true),
 
-                        (OwnedPrimitiveType::Textual(_), OwnedPrimitiveType::Textual(_)) => {
-                            Ok(true)
-                        }
+                    (CowPrimitiveType::Textual(_), CowPrimitiveType::Textual(_)) => Ok(true),
 
-                        _ => Ok(false),
-                    }
-                }
+                    _ => Ok(false),
+                },
 
                 (
-                    OwnedType::User(OwnedUserType::Opaque),
-                    OwnedType::Primitive(OwnedPrimitiveType::Numeric(_)),
+                    CowType::User(CowUserType::Opaque),
+                    CowType::Primitive(CowPrimitiveType::Numeric(_)),
                 )
                 | (
-                    OwnedType::Primitive(OwnedPrimitiveType::Numeric(_)),
-                    OwnedType::User(OwnedUserType::Opaque),
+                    CowType::Primitive(CowPrimitiveType::Numeric(_)),
+                    CowType::User(CowUserType::Opaque),
                 ) => {
                     let opaque_shape =
-                        if matches!(*from_inner.ty, OwnedType::User(OwnedUserType::Opaque)) {
+                        if matches!(from_inner.ty.as_ref(), CowType::User(CowUserType::Opaque)) {
                             from_inner
                         } else {
                             to_inner
@@ -198,28 +189,28 @@ fn is_compatible_type_change(diff: &Diff) -> Result<bool, String> {
 }
 
 /// Unwrap Option types to get to the inner type
-fn unwrap_option_type(shape: &OwnedShape) -> &OwnedShape {
-    if let OwnedDef::Option(opt) = &*shape.def {
+fn unwrap_option_type<'a, 'b>(shape: &'a CowShape<'b>) -> &'a CowShape<'b> {
+    if let CowDef::Option(opt) = shape.def.as_ref() {
         unwrap_option_type(&opt.t)
     } else {
         shape
     }
 }
 
-fn set_column_type_from_shape(col: &mut ColumnDef, shape: &OwnedShape) -> Result<(), String> {
-    let inner_shape = if let OwnedDef::Option(opt) = &*shape.def {
+fn set_column_type_from_shape(col: &mut ColumnDef, shape: &CowShape) -> Result<(), String> {
+    let inner_shape = if let CowDef::Option(opt) = shape.def.as_ref() {
         &opt.t
     } else {
         shape
     };
 
-    match &*inner_shape.ty {
-        OwnedType::Primitive(p) => match p {
-            OwnedPrimitiveType::Boolean => {
+    match inner_shape.ty.as_ref() {
+        CowType::Primitive(p) => match p {
+            CowPrimitiveType::Boolean => {
                 col.boolean();
             }
-            OwnedPrimitiveType::Numeric(n) => match n {
-                OwnedNumericType::Integer { .. } => match inner_shape.type_identifier.as_str() {
+            CowPrimitiveType::Numeric(n) => match n {
+                CowNumericType::Integer { .. } => match inner_shape.type_identifier.as_ref() {
                     "u8" | "i8" => {
                         col.tiny_integer();
                     }
@@ -236,7 +227,7 @@ fn set_column_type_from_shape(col: &mut ColumnDef, shape: &OwnedShape) -> Result
                         col.integer();
                     }
                 },
-                OwnedNumericType::Float => match inner_shape.type_identifier.as_str() {
+                CowNumericType::Float => match inner_shape.type_identifier.as_ref() {
                     "f32" => {
                         col.float();
                     }
@@ -248,22 +239,22 @@ fn set_column_type_from_shape(col: &mut ColumnDef, shape: &OwnedShape) -> Result
                     }
                 },
             },
-            OwnedPrimitiveType::Textual(t) => match t {
-                OwnedTextualType::Char => {
+            CowPrimitiveType::Textual(t) => match t {
+                CowTextualType::Char => {
                     col.char_len(1);
                 }
-                OwnedTextualType::Str => {
+                CowTextualType::Str => {
                     col.string();
                 }
             },
-            OwnedPrimitiveType::Never => {
+            CowPrimitiveType::Never => {
                 return Err("Never type not supported in SQL".to_string());
             }
         },
-        OwnedType::User(OwnedUserType::Enum(_)) => {
+        CowType::User(CowUserType::Enum(_)) => {
             col.string();
         }
-        OwnedType::User(OwnedUserType::Opaque) => match inner_shape.type_identifier.as_str() {
+        CowType::User(CowUserType::Opaque) => match inner_shape.type_identifier.as_ref() {
             "String" | "str" => {
                 col.string();
             }

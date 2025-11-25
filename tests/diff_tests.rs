@@ -13,7 +13,7 @@ fn test_equal_shapes() {
     let shape1 = OwnedShape::try_from(SimpleStruct::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(SimpleStruct::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(diff.is_equal(), "Same shapes should be equal");
 }
 
@@ -33,7 +33,7 @@ fn test_different_primitive_types() {
     let shape1 = OwnedShape::try_from(IntStruct::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(StringStruct::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(
         !diff.is_equal(),
         "Different primitive types should not be equal"
@@ -59,7 +59,7 @@ fn test_field_addition() {
     let shape1 = OwnedShape::try_from(PersonV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(PersonV2::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(
         !diff.is_equal(),
         "Shapes with different fields should not be equal"
@@ -93,7 +93,7 @@ fn test_field_deletion() {
     let shape1 = OwnedShape::try_from(PersonV2::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(PersonV1::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(
         !diff.is_equal(),
         "Shapes with different fields should not be equal"
@@ -135,7 +135,7 @@ fn test_field_type_change() {
     let shape1 = OwnedShape::try_from(ConfigV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(ConfigV2::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(
         !diff.is_equal(),
         "Shapes with different field types should not be equal"
@@ -182,7 +182,7 @@ fn test_nested_struct_change() {
     let shape1 = OwnedShape::try_from(PersonWithAddress::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(PersonWithSimpleAddress::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(!diff.is_equal(), "Nested struct changes should be detected");
 
     match diff {
@@ -215,7 +215,7 @@ fn test_array_size_change() {
     let shape1 = OwnedShape::try_from(SmallArray::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(LargeArray::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(
         !diff.is_equal(),
         "Different array sizes should not be equal"
@@ -238,7 +238,7 @@ fn test_option_type_change() {
     let shape1 = OwnedShape::try_from(RequiredField::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(OptionalField::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(!diff.is_equal(), "Required vs optional should not be equal");
 }
 
@@ -263,7 +263,7 @@ fn test_enum_shapes() {
     let shape1 = OwnedShape::try_from(StatusV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(StatusV2::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(
         !diff.is_equal(),
         "Enums with different variants should not be equal"
@@ -296,7 +296,7 @@ fn test_complex_nested_change() {
     let shape1 = OwnedShape::try_from(DataRecordV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(DataRecordV2::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(
         !diff.is_equal(),
         "Complex nested changes should be detected"
@@ -317,7 +317,7 @@ fn test_equal_enum_shapes() {
     let shape1 = OwnedShape::try_from(Color::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(Color::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(diff.is_equal(), "Same enum shapes should be equal");
 }
 
@@ -334,7 +334,7 @@ fn test_all_fields_unchanged() {
     let shape1 = OwnedShape::try_from(Unchanged::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(Unchanged::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(diff.is_equal(), "Identical structs should be equal");
 }
 
@@ -358,7 +358,7 @@ fn test_multiple_field_updates() {
     let shape1 = OwnedShape::try_from(MultiFieldV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(MultiFieldV2::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     assert!(
         !diff.is_equal(),
         "Multiple field changes should be detected"
@@ -394,7 +394,7 @@ fn test_empty_structs() {
     let shape1 = OwnedShape::try_from(EmptyStruct1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(EmptyStruct2::SHAPE).unwrap();
 
-    let diff = Diff::new(&shape1, &shape2);
+    let diff = Diff::new(&shape1.into(), &shape2.into());
     // Empty structs with different names are different
     assert!(
         !diff.is_equal(),

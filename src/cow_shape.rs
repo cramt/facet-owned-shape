@@ -122,6 +122,132 @@ pub struct CowShape<'a> {
     pub ty: BoxCow<'a, CowType<'a>>,
 }
 
+use crate::owned_shape::*;
+
+impl<'a> From<OwnedShape> for CowShape<'a> {
+    fn from(shape: OwnedShape) -> Self {
+        CowShape {
+            type_identifier: Cow::Owned(shape.type_identifier),
+            def: BoxCow::Owned(Box::new((*shape.def).into())),
+            ty: BoxCow::Owned(Box::new((*shape.ty).into())),
+        }
+    }
+}
+
+impl<'a> From<OwnedDef> for CowDef<'a> {
+    fn from(def: OwnedDef) -> Self {
+        match def {
+            OwnedDef::Undefined => CowDef::Undefined,
+            OwnedDef::Scalar => CowDef::Scalar,
+            OwnedDef::Map(d) => CowDef::Map(CowMapDef {
+                k: d.k.into(),
+                v: d.v.into(),
+            }),
+            OwnedDef::Set(d) => CowDef::Set(CowSetDef { t: d.t.into() }),
+            OwnedDef::List(d) => CowDef::List(CowListDef { t: d.t.into() }),
+            OwnedDef::Array(d) => CowDef::Array(CowArrayDef {
+                t: d.t.into(),
+                n: d.n,
+            }),
+            OwnedDef::Option(d) => CowDef::Option(CowOptionDef { t: d.t.into() }),
+        }
+    }
+}
+
+impl<'a> From<OwnedType> for CowType<'a> {
+    fn from(ty: OwnedType) -> Self {
+        match ty {
+            OwnedType::Primitive(p) => CowType::Primitive(p.into()),
+            OwnedType::Sequence(s) => CowType::Sequence(CowSequenceType { t: s.t.into() }),
+            OwnedType::User(u) => CowType::User(u.into()),
+        }
+    }
+}
+
+impl From<OwnedPrimitiveType> for CowPrimitiveType {
+    fn from(p: OwnedPrimitiveType) -> Self {
+        match p {
+            OwnedPrimitiveType::Boolean => CowPrimitiveType::Boolean,
+            OwnedPrimitiveType::Numeric(n) => CowPrimitiveType::Numeric(n.into()),
+            OwnedPrimitiveType::Textual(t) => CowPrimitiveType::Textual(t.into()),
+            OwnedPrimitiveType::Never => CowPrimitiveType::Never,
+        }
+    }
+}
+
+impl From<OwnedNumericType> for CowNumericType {
+    fn from(n: OwnedNumericType) -> Self {
+        match n {
+            OwnedNumericType::Integer { signed } => CowNumericType::Integer { signed },
+            OwnedNumericType::Float => CowNumericType::Float,
+        }
+    }
+}
+
+impl From<OwnedTextualType> for CowTextualType {
+    fn from(t: OwnedTextualType) -> Self {
+        match t {
+            OwnedTextualType::Char => CowTextualType::Char,
+            OwnedTextualType::Str => CowTextualType::Str,
+        }
+    }
+}
+
+impl<'a> From<OwnedUserType> for CowUserType<'a> {
+    fn from(u: OwnedUserType) -> Self {
+        match u {
+            OwnedUserType::Struct(s) => CowUserType::Struct(s.into()),
+            OwnedUserType::Enum(e) => CowUserType::Enum(e.into()),
+            OwnedUserType::Union(u) => CowUserType::Union(u.into()),
+            OwnedUserType::Opaque => CowUserType::Opaque,
+        }
+    }
+}
+
+impl<'a> From<OwnedStructType> for CowStructType<'a> {
+    fn from(s: OwnedStructType) -> Self {
+        CowStructType {
+            fields: s.fields.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl<'a> From<OwnedField> for CowField<'a> {
+    fn from(f: OwnedField) -> Self {
+        CowField {
+            name: Cow::Owned(f.name),
+            shape: f.shape.into(),
+            doc: f.doc.into_iter().map(Cow::Owned).collect(),
+        }
+    }
+}
+
+impl<'a> From<OwnedEnumType> for CowEnumType<'a> {
+    fn from(e: OwnedEnumType) -> Self {
+        CowEnumType {
+            variants: e.variants.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl<'a> From<OwnedVariant> for CowVariant<'a> {
+    fn from(v: OwnedVariant) -> Self {
+        CowVariant {
+            name: Cow::Owned(v.name),
+            data: v.data.into(),
+            doc: v.doc.into_iter().map(Cow::Owned).collect(),
+        }
+    }
+}
+
+impl<'a> From<OwnedUnionType> for CowUnionType<'a> {
+    fn from(u: OwnedUnionType) -> Self {
+        CowUnionType {
+            fields: u.fields.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 impl<'a> TryFrom<&facet::Shape> for CowShape<'a> {
     type Error = String;
 

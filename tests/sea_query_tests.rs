@@ -1,5 +1,5 @@
 use facet::Facet;
-use facet_owned_shape::{diff::Diff, OwnedShape};
+use facet_owned_shape::{diff::Diff, owned_shape::OwnedShape};
 use sea_query::{PostgresQueryBuilder, TableAlterStatement, TableCreateStatement};
 
 #[derive(Facet, Clone)]
@@ -18,7 +18,7 @@ fn test_user_table_creation() {
 
     assert!(sql.contains("CREATE TABLE \"User\""));
     assert!(sql.contains("\"id\" integer NOT NULL"));
-    assert!(sql.contains("\"username\" varchar")); 
+    assert!(sql.contains("\"username\" varchar"));
     assert!(sql.contains("\"active\" bool NOT NULL"));
     assert!(sql.contains("\"age\" integer"));
 }
@@ -60,8 +60,6 @@ fn test_non_struct_failure() {
     assert!(res.is_err());
 }
 
-
-
 #[derive(Facet, Clone)]
 struct UserV1 {
     id: i32,
@@ -80,7 +78,7 @@ struct UserV2 {
 fn test_diff_add_columns() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v2 = OwnedShape::try_from(UserV2::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&v1, &v2);
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
@@ -99,7 +97,7 @@ struct UserV3 {
 fn test_diff_drop_columns() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v3 = OwnedShape::try_from(UserV3::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&v1, &v3);
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
@@ -119,7 +117,7 @@ struct UserV4 {
 fn test_diff_add_and_drop() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v4 = OwnedShape::try_from(UserV4::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&v1, &v4);
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
@@ -138,7 +136,7 @@ struct UserV5 {
 fn test_diff_type_change_i32_to_string() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v5 = OwnedShape::try_from(UserV5::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&v1, &v5);
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
@@ -157,7 +155,7 @@ struct UserV6 {
 fn test_diff_type_change_i32_to_i64() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v6 = OwnedShape::try_from(UserV6::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&v1, &v6);
     let stmt: TableAlterStatement = diff.try_into().unwrap();
     let sql = stmt.to_string(PostgresQueryBuilder);
@@ -176,24 +174,22 @@ struct UserV7 {
 fn test_diff_incompatible_type_change() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v7 = OwnedShape::try_from(UserV7::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&v1, &v7);
     let res: Result<TableAlterStatement, String> = diff.try_into();
-    
+
     assert!(res.is_err());
     assert!(res.unwrap_err().contains("Incompatible type change"));
 }
-
 
 #[test]
 fn test_diff_equal_error() {
     let v1 = OwnedShape::try_from(UserV1::SHAPE).unwrap();
     let v1_copy = OwnedShape::try_from(UserV1::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&v1, &v1_copy);
     let res: Result<TableAlterStatement, String> = diff.try_into();
-    
+
     assert!(res.is_err());
     assert!(res.unwrap_err().contains("no changes needed"));
 }
-

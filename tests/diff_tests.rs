@@ -1,5 +1,5 @@
 use facet::Facet;
-use facet_owned_shape::{diff::Diff, OwnedShape};
+use facet_owned_shape::{diff::Diff, owned_shape::OwnedShape};
 
 // Test 1: Equal shapes should be detected
 #[derive(Facet, Clone, Debug)]
@@ -12,7 +12,7 @@ struct SimpleStruct {
 fn test_equal_shapes() {
     let shape1 = OwnedShape::try_from(SimpleStruct::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(SimpleStruct::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
     assert!(diff.is_equal(), "Same shapes should be equal");
 }
@@ -32,9 +32,12 @@ struct StringStruct {
 fn test_different_primitive_types() {
     let shape1 = OwnedShape::try_from(IntStruct::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(StringStruct::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
-    assert!(!diff.is_equal(), "Different primitive types should not be equal");
+    assert!(
+        !diff.is_equal(),
+        "Different primitive types should not be equal"
+    );
 }
 
 // Test 3: Struct field additions
@@ -55,15 +58,29 @@ struct PersonV2 {
 fn test_field_addition() {
     let shape1 = OwnedShape::try_from(PersonV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(PersonV2::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
-    assert!(!diff.is_equal(), "Shapes with different fields should not be equal");
-    
+    assert!(
+        !diff.is_equal(),
+        "Shapes with different fields should not be equal"
+    );
+
     // Check that it's a User diff with struct value
     match diff {
-        Diff::User { value: facet_owned_shape::diff::Value::Struct { insertions, unchanged, .. }, .. } => {
+        Diff::User {
+            value:
+                facet_owned_shape::diff::Value::Struct {
+                    insertions,
+                    unchanged,
+                    ..
+                },
+            ..
+        } => {
             assert_eq!(insertions.len(), 1, "Should have one insertion");
-            assert!(insertions.contains("email"), "Should have email as insertion");
+            assert!(
+                insertions.contains("email"),
+                "Should have email as insertion"
+            );
             assert_eq!(unchanged.len(), 2, "Should have two unchanged fields");
         }
         _ => panic!("Expected User diff with Struct value"),
@@ -75,12 +92,23 @@ fn test_field_addition() {
 fn test_field_deletion() {
     let shape1 = OwnedShape::try_from(PersonV2::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(PersonV1::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
-    assert!(!diff.is_equal(), "Shapes with different fields should not be equal");
-    
+    assert!(
+        !diff.is_equal(),
+        "Shapes with different fields should not be equal"
+    );
+
     match diff {
-        Diff::User { value: facet_owned_shape::diff::Value::Struct { deletions, unchanged, .. }, .. } => {
+        Diff::User {
+            value:
+                facet_owned_shape::diff::Value::Struct {
+                    deletions,
+                    unchanged,
+                    ..
+                },
+            ..
+        } => {
             assert_eq!(deletions.len(), 1, "Should have one deletion");
             assert!(deletions.contains("email"), "Should have email as deletion");
             assert_eq!(unchanged.len(), 2, "Should have two unchanged fields");
@@ -98,7 +126,7 @@ struct ConfigV1 {
 
 #[derive(Facet, Clone, Debug)]
 struct ConfigV2 {
-    port: String,  // Changed from u16 to String
+    port: String, // Changed from u16 to String
     host: String,
 }
 
@@ -106,12 +134,18 @@ struct ConfigV2 {
 fn test_field_type_change() {
     let shape1 = OwnedShape::try_from(ConfigV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(ConfigV2::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
-    assert!(!diff.is_equal(), "Shapes with different field types should not be equal");
-    
+    assert!(
+        !diff.is_equal(),
+        "Shapes with different field types should not be equal"
+    );
+
     match diff {
-        Diff::User { value: facet_owned_shape::diff::Value::Struct { updates, .. }, .. } => {
+        Diff::User {
+            value: facet_owned_shape::diff::Value::Struct { updates, .. },
+            ..
+        } => {
             assert_eq!(updates.len(), 1, "Should have one update");
             assert!(updates.contains_key("port"), "Should have port as updated");
         }
@@ -147,13 +181,19 @@ struct PersonWithSimpleAddress {
 fn test_nested_struct_change() {
     let shape1 = OwnedShape::try_from(PersonWithAddress::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(PersonWithSimpleAddress::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
     assert!(!diff.is_equal(), "Nested struct changes should be detected");
-    
+
     match diff {
-        Diff::User { value: facet_owned_shape::diff::Value::Struct { updates, .. }, .. } => {
-            assert!(updates.contains_key("address"), "Should have address as updated");
+        Diff::User {
+            value: facet_owned_shape::diff::Value::Struct { updates, .. },
+            ..
+        } => {
+            assert!(
+                updates.contains_key("address"),
+                "Should have address as updated"
+            );
         }
         _ => panic!("Expected User diff with Struct value"),
     }
@@ -174,9 +214,12 @@ struct LargeArray {
 fn test_array_size_change() {
     let shape1 = OwnedShape::try_from(SmallArray::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(LargeArray::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
-    assert!(!diff.is_equal(), "Different array sizes should not be equal");
+    assert!(
+        !diff.is_equal(),
+        "Different array sizes should not be equal"
+    );
 }
 
 // Test 8: Option type changes
@@ -194,7 +237,7 @@ struct OptionalField {
 fn test_option_type_change() {
     let shape1 = OwnedShape::try_from(RequiredField::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(OptionalField::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
     assert!(!diff.is_equal(), "Required vs optional should not be equal");
 }
@@ -219,9 +262,12 @@ enum StatusV2 {
 fn test_enum_shapes() {
     let shape1 = OwnedShape::try_from(StatusV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(StatusV2::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
-    assert!(!diff.is_equal(), "Enums with different variants should not be equal");
+    assert!(
+        !diff.is_equal(),
+        "Enums with different variants should not be equal"
+    );
 }
 
 // Test 10: Complex nested structures
@@ -241,7 +287,7 @@ struct DataRecordV1 {
 #[derive(Facet, Clone, Debug)]
 struct DataRecordV2 {
     id: String,
-    data: [u8; 64],  // Changed size
+    data: [u8; 64], // Changed size
     metadata: Metadata,
 }
 
@@ -249,9 +295,12 @@ struct DataRecordV2 {
 fn test_complex_nested_change() {
     let shape1 = OwnedShape::try_from(DataRecordV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(DataRecordV2::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
-    assert!(!diff.is_equal(), "Complex nested changes should be detected");
+    assert!(
+        !diff.is_equal(),
+        "Complex nested changes should be detected"
+    );
 }
 
 // Test 11: Identical enum shapes
@@ -267,7 +316,7 @@ enum Color {
 fn test_equal_enum_shapes() {
     let shape1 = OwnedShape::try_from(Color::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(Color::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
     assert!(diff.is_equal(), "Same enum shapes should be equal");
 }
@@ -284,7 +333,7 @@ struct Unchanged {
 fn test_all_fields_unchanged() {
     let shape1 = OwnedShape::try_from(Unchanged::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(Unchanged::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
     assert!(diff.is_equal(), "Identical structs should be equal");
 }
@@ -299,21 +348,30 @@ struct MultiFieldV1 {
 
 #[derive(Facet, Clone, Debug)]
 struct MultiFieldV2 {
-    field1: u64,     // Changed type
-    field2: String,  // Unchanged
-    field3: u8,      // Changed type
+    field1: u64,    // Changed type
+    field2: String, // Unchanged
+    field3: u8,     // Changed type
 }
 
 #[test]
 fn test_multiple_field_updates() {
     let shape1 = OwnedShape::try_from(MultiFieldV1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(MultiFieldV2::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
-    assert!(!diff.is_equal(), "Multiple field changes should be detected");
-    
+    assert!(
+        !diff.is_equal(),
+        "Multiple field changes should be detected"
+    );
+
     match diff {
-        Diff::User { value: facet_owned_shape::diff::Value::Struct { updates, unchanged, .. }, .. } => {
+        Diff::User {
+            value:
+                facet_owned_shape::diff::Value::Struct {
+                    updates, unchanged, ..
+                },
+            ..
+        } => {
             assert_eq!(updates.len(), 2, "Should have two updates");
             assert!(updates.contains_key("field1"), "field1 should be updated");
             assert!(updates.contains_key("field3"), "field3 should be updated");
@@ -335,8 +393,11 @@ struct EmptyStruct2 {}
 fn test_empty_structs() {
     let shape1 = OwnedShape::try_from(EmptyStruct1::SHAPE).unwrap();
     let shape2 = OwnedShape::try_from(EmptyStruct2::SHAPE).unwrap();
-    
+
     let diff = Diff::new(&shape1, &shape2);
     // Empty structs with different names are different
-    assert!(!diff.is_equal(), "Empty structs with different type identifiers should not be equal");
+    assert!(
+        !diff.is_equal(),
+        "Empty structs with different type identifiers should not be equal"
+    );
 }

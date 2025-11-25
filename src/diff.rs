@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{OwnedDef, OwnedShape, OwnedType, OwnedUserType};
+use crate::owned_shape::{OwnedDef, OwnedShape, OwnedType, OwnedUserType};
 
 /// The difference between two shape definitions.
 ///
@@ -67,7 +67,10 @@ impl Diff {
 
         // Compare based on type
         match (&*from.ty, &*to.ty) {
-            (OwnedType::User(OwnedUserType::Struct(from_struct)), OwnedType::User(OwnedUserType::Struct(to_struct))) => {
+            (
+                OwnedType::User(OwnedUserType::Struct(from_struct)),
+                OwnedType::User(OwnedUserType::Struct(to_struct)),
+            ) => {
                 let mut updates = HashMap::new();
                 let mut deletions = HashSet::new();
                 let mut insertions = HashSet::new();
@@ -95,11 +98,8 @@ impl Diff {
                 }
 
                 // Find insertions (fields in 'to' but not in 'from')
-                let from_field_names: HashSet<_> = from_struct
-                    .fields
-                    .iter()
-                    .map(|f| f.name.as_str())
-                    .collect();
+                let from_field_names: HashSet<_> =
+                    from_struct.fields.iter().map(|f| f.name.as_str()).collect();
 
                 for to_field in &to_struct.fields {
                     if !from_field_names.contains(to_field.name.as_str()) {
@@ -125,12 +125,10 @@ impl Diff {
                     to: to.clone(),
                 }
             }
-            (OwnedType::Sequence(_), OwnedType::Sequence(_)) => {
-                Diff::Sequence {
-                    from: from.clone(),
-                    to: to.clone(),
-                }
-            }
+            (OwnedType::Sequence(_), OwnedType::Sequence(_)) => Diff::Sequence {
+                from: from.clone(),
+                to: to.clone(),
+            },
             _ => Diff::Different {
                 from: from.clone(),
                 to: to.clone(),
@@ -164,9 +162,7 @@ fn defs_equal(a: &OwnedDef, b: &OwnedDef) -> bool {
         }
         (OwnedDef::Set(a), OwnedDef::Set(b)) => shapes_equal(&a.t, &b.t),
         (OwnedDef::List(a), OwnedDef::List(b)) => shapes_equal(&a.t, &b.t),
-        (OwnedDef::Array(a), OwnedDef::Array(b)) => {
-            a.n == b.n && shapes_equal(&a.t, &b.t)
-        }
+        (OwnedDef::Array(a), OwnedDef::Array(b)) => a.n == b.n && shapes_equal(&a.t, &b.t),
         (OwnedDef::Option(a), OwnedDef::Option(b)) => shapes_equal(&a.t, &b.t),
         _ => false,
     }
@@ -179,40 +175,45 @@ fn types_equal(a: &OwnedType, b: &OwnedType) -> bool {
             format!("{:?}", a) == format!("{:?}", b)
         }
         (OwnedType::Sequence(a), OwnedType::Sequence(b)) => shapes_equal(&a.t, &b.t),
-        (OwnedType::User(a), OwnedType::User(b)) => {
-            match (a, b) {
-                (OwnedUserType::Struct(a), OwnedUserType::Struct(b)) => {
-                    if a.fields.len() != b.fields.len() {
-                        return false;
-                    }
-                    a.fields.iter().zip(b.fields.iter()).all(|(af, bf)| {
-                        af.name == bf.name && shapes_equal(&af.shape, &bf.shape)
-                    })
+        (OwnedType::User(a), OwnedType::User(b)) => match (a, b) {
+            (OwnedUserType::Struct(a), OwnedUserType::Struct(b)) => {
+                if a.fields.len() != b.fields.len() {
+                    return false;
                 }
-                (OwnedUserType::Enum(a), OwnedUserType::Enum(b)) => {
-                    if a.variants.len() != b.variants.len() {
-                        return false;
-                    }
-                    a.variants.iter().zip(b.variants.iter()).all(|(av, bv)| {
-                        av.name == bv.name
-                            && av.data.fields.len() == bv.data.fields.len()
-                            && av.data.fields.iter().zip(bv.data.fields.iter()).all(
-                                |(af, bf)| af.name == bf.name && shapes_equal(&af.shape, &bf.shape),
-                            )
-                    })
-                }
-                (OwnedUserType::Union(a), OwnedUserType::Union(b)) => {
-                    if a.fields.len() != b.fields.len() {
-                        return false;
-                    }
-                    a.fields.iter().zip(b.fields.iter()).all(|(af, bf)| {
-                        af.name == bf.name && shapes_equal(&af.shape, &bf.shape)
-                    })
-                }
-                (OwnedUserType::Opaque, OwnedUserType::Opaque) => true,
-                _ => false,
+                a.fields
+                    .iter()
+                    .zip(b.fields.iter())
+                    .all(|(af, bf)| af.name == bf.name && shapes_equal(&af.shape, &bf.shape))
             }
-        }
+            (OwnedUserType::Enum(a), OwnedUserType::Enum(b)) => {
+                if a.variants.len() != b.variants.len() {
+                    return false;
+                }
+                a.variants.iter().zip(b.variants.iter()).all(|(av, bv)| {
+                    av.name == bv.name
+                        && av.data.fields.len() == bv.data.fields.len()
+                        && av
+                            .data
+                            .fields
+                            .iter()
+                            .zip(bv.data.fields.iter())
+                            .all(|(af, bf)| {
+                                af.name == bf.name && shapes_equal(&af.shape, &bf.shape)
+                            })
+                })
+            }
+            (OwnedUserType::Union(a), OwnedUserType::Union(b)) => {
+                if a.fields.len() != b.fields.len() {
+                    return false;
+                }
+                a.fields
+                    .iter()
+                    .zip(b.fields.iter())
+                    .all(|(af, bf)| af.name == bf.name && shapes_equal(&af.shape, &bf.shape))
+            }
+            (OwnedUserType::Opaque, OwnedUserType::Opaque) => true,
+            _ => false,
+        },
         _ => false,
     }
 }

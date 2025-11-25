@@ -1,5 +1,5 @@
 use facet::Facet;
-use facet_owned_shape::OwnedShape;
+use facet_owned_shape::owned_shape::OwnedShape;
 
 // Test 1: Simple primitive types
 #[derive(Facet, Clone)]

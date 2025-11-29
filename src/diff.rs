@@ -79,10 +79,10 @@ impl<'a> Diff<'a> {
                 let mut unchanged = HashSet::new();
 
                 // Build a map of field names to fields for quick lookup
-                let to_fields: HashMap<_, _> = to_struct
+                let to_fields: HashMap<String, _> = to_struct
                     .fields
                     .iter()
-                    .map(|f| (f.name.as_ref(), f))
+                    .map(|f| (f.name.clone().into_owned(), f))
                     .collect();
 
                 // Compare fields from 'from' struct
@@ -100,8 +100,11 @@ impl<'a> Diff<'a> {
                 }
 
                 // Find insertions (fields in 'to' but not in 'from')
-                let from_field_names: HashSet<_> =
-                    from_struct.fields.iter().map(|f| f.name.as_ref()).collect();
+                let from_field_names: HashSet<String> = from_struct
+                    .fields
+                    .iter()
+                    .map(|f| f.name.clone().into_owned())
+                    .collect();
 
                 for to_field in &to_struct.fields {
                     if !from_field_names.contains(to_field.name.as_ref()) {

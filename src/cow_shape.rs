@@ -1,6 +1,210 @@
 use std::borrow::Cow;
 
 use crate::box_cow::BoxCow;
+use crate::vec_cow::VecCow;
+
+pub trait ShapeFrom<F: ?Sized> {
+    fn shape_from(f: &F) -> Result<Self, String>
+    where
+        Self: Sized;
+}
+
+impl<'a> ShapeFrom<&'static str> for Cow<'a, str> {
+    fn shape_from(f: &&'static str) -> Result<Self, String> {
+        Ok(Cow::Borrowed(*f))
+    }
+}
+
+impl<'a> ShapeFrom<facet::Field> for CowField<'a> {
+    fn shape_from(f: &facet::Field) -> Result<Self, String> {
+        f.try_into()
+    }
+}
+
+impl<'a> ShapeFrom<facet::Variant> for CowVariant<'a> {
+    fn shape_from(v: &facet::Variant) -> Result<Self, String> {
+        v.try_into()
+    }
+}
+
+#[derive(Clone)]
+pub enum ShapeList<'a, T, F>
+where
+    T: Clone + 'a,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    Cow(VecCow<'a, [T]>),
+    Facet(&'a [F]),
+}
+
+impl<'a, T, F> std::fmt::Debug for ShapeList<'a, T, F>
+where
+    T: Clone + 'a + std::fmt::Debug + ShapeFrom<F>,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ShapeList::Cow(cow) => f.debug_tuple("Cow").field(cow).finish(),
+            ShapeList::Facet(facet) => {
+                // Convert on-the-fly for debug output
+                let converted: Vec<T> = facet
+                    .iter()
+                    .map(|x| T::shape_from(x).expect("Debug conversion failed"))
+                    .collect();
+                f.debug_tuple("Cow")
+                    .field(&VecCow::<[T]>::from(converted))
+                    .finish()
+            }
+        }
+    }
+}
+
+impl<'a, T, F> From<VecCow<'a, [T]>> for ShapeList<'a, T, F>
+where
+    T: Clone + 'a,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    fn from(cow: VecCow<'a, [T]>) -> Self {
+        ShapeList::Cow(cow)
+    }
+}
+
+impl<'a, T, F> From<Vec<T>> for ShapeList<'a, T, F>
+where
+    T: Clone + 'a,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    fn from(vec: Vec<T>) -> Self {
+        ShapeList::Cow(vec.into())
+    }
+}
+
+pub struct ShapeListIter<'a, T, F> {
+    inner: ShapeListIterInner<'a, T, F>,
+}
+
+enum ShapeListIterInner<'a, T, F> {
+    Cow(std::slice::Iter<'a, T>),
+    Facet(std::slice::Iter<'a, F>),
+}
+
+impl<'a, T, F> Iterator for ShapeListIter<'a, T, F>
+where
+    T: 'a + Clone + ShapeFrom<F>,
+    F: 'a,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    type Item = Cow<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.inner {
+            ShapeListIterInner::Cow(iter) => iter.next().map(|x| Cow::Borrowed(x)),
+            ShapeListIterInner::Facet(iter) => iter.next().map(|x| {
+                let t: T = T::shape_from(x).expect("Lazy conversion failed");
+                Cow::Owned(t)
+            }),
+        }
+    }
+}
+
+impl<'a, T, F> ShapeList<'a, T, F>
+where
+    T: Clone + 'a,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    pub fn iter(&self) -> ShapeListIter<'_, T, F>
+    where
+        T: ShapeFrom<F>,
+    {
+        match self {
+            ShapeList::Cow(cow) => ShapeListIter {
+                inner: ShapeListIterInner::Cow(cow.iter()),
+            },
+            ShapeList::Facet(facet) => ShapeListIter {
+                inner: ShapeListIterInner::Facet(facet.iter()),
+            },
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            ShapeList::Cow(cow) => cow.len(),
+            ShapeList::Facet(facet) => facet.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl<'a, T, F> IntoIterator for &'a ShapeList<'_, T, F>
+where
+    T: 'a + Clone + ShapeFrom<F>,
+    F: 'a,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    type Item = Cow<'a, T>;
+    type IntoIter = ShapeListIter<'a, T, F>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+pub struct ShapeListIntoIter<'a, T, F> {
+    inner: ShapeListIntoIterInner<'a, T, F>,
+}
+
+enum ShapeListIntoIterInner<'a, T, F> {
+    CowOwned(std::vec::IntoIter<T>),
+    CowBorrowed(std::slice::Iter<'a, T>),
+    Facet(std::slice::Iter<'a, F>),
+}
+
+impl<'a, T, F> Iterator for ShapeListIntoIter<'a, T, F>
+where
+    T: 'a + Clone + ShapeFrom<F>,
+    F: 'a,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    type Item = Cow<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.inner {
+            ShapeListIntoIterInner::CowOwned(iter) => iter.next().map(Cow::Owned),
+            ShapeListIntoIterInner::CowBorrowed(iter) => iter.next().map(Cow::Borrowed),
+            ShapeListIntoIterInner::Facet(iter) => iter.next().map(|x| {
+                let t: T = T::shape_from(x).expect("Lazy conversion failed");
+                Cow::Owned(t)
+            }),
+        }
+    }
+}
+
+impl<'a, T, F> IntoIterator for ShapeList<'a, T, F>
+where
+    T: 'a + Clone + ShapeFrom<F>,
+    F: 'a,
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    type Item = Cow<'a, T>;
+    type IntoIter = ShapeListIntoIter<'a, T, F>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            ShapeList::Cow(VecCow::Owned(vec)) => ShapeListIntoIter {
+                inner: ShapeListIntoIterInner::CowOwned(vec.into_iter()),
+            },
+            ShapeList::Cow(VecCow::Borrowed(slice)) => ShapeListIntoIter {
+                inner: ShapeListIntoIterInner::CowBorrowed(slice.iter()),
+            },
+            ShapeList::Facet(facet) => ShapeListIntoIter {
+                inner: ShapeListIntoIterInner::Facet(facet.iter()),
+            },
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct CowMapDef<'a> {
@@ -73,29 +277,29 @@ pub struct CowSequenceType<'a> {
 pub struct CowField<'a> {
     pub name: Cow<'a, str>,
     pub shape: CowShape<'a>,
-    pub doc: Vec<Cow<'a, str>>,
+    pub doc: ShapeList<'a, Cow<'a, str>, &'static str>,
 }
 
 #[derive(Clone, Debug)]
 pub struct CowStructType<'a> {
-    pub fields: Vec<CowField<'a>>,
+    pub fields: ShapeList<'a, CowField<'a>, facet::Field>,
 }
 
 #[derive(Clone, Debug)]
 pub struct CowUnionType<'a> {
-    pub fields: Vec<CowField<'a>>,
+    pub fields: ShapeList<'a, CowField<'a>, facet::Field>,
 }
 
 #[derive(Clone, Debug)]
 pub struct CowVariant<'a> {
     pub name: Cow<'a, str>,
     pub data: CowStructType<'a>,
-    pub doc: Vec<Cow<'a, str>>,
+    pub doc: ShapeList<'a, Cow<'a, str>, &'static str>,
 }
 
 #[derive(Clone, Debug)]
 pub struct CowEnumType<'a> {
-    pub variants: Vec<CowVariant<'a>>,
+    pub variants: ShapeList<'a, CowVariant<'a>, facet::Variant>,
 }
 
 #[derive(Clone, Debug)]
@@ -207,7 +411,12 @@ impl<'a> From<OwnedUserType> for CowUserType<'a> {
 impl<'a> From<OwnedStructType> for CowStructType<'a> {
     fn from(s: OwnedStructType) -> Self {
         CowStructType {
-            fields: s.fields.into_iter().map(Into::into).collect(),
+            fields: s
+                .fields
+                .into_iter()
+                .map(Into::into)
+                .collect::<Vec<_>>()
+                .into(),
         }
     }
 }
@@ -217,7 +426,7 @@ impl<'a> From<OwnedField> for CowField<'a> {
         CowField {
             name: Cow::Owned(f.name),
             shape: f.shape.into(),
-            doc: f.doc.into_iter().map(Cow::Owned).collect(),
+            doc: f.doc.into_iter().map(Cow::Owned).collect::<Vec<_>>().into(),
         }
     }
 }
@@ -225,7 +434,12 @@ impl<'a> From<OwnedField> for CowField<'a> {
 impl<'a> From<OwnedEnumType> for CowEnumType<'a> {
     fn from(e: OwnedEnumType) -> Self {
         CowEnumType {
-            variants: e.variants.into_iter().map(Into::into).collect(),
+            variants: e
+                .variants
+                .into_iter()
+                .map(Into::into)
+                .collect::<Vec<_>>()
+                .into(),
         }
     }
 }
@@ -235,7 +449,7 @@ impl<'a> From<OwnedVariant> for CowVariant<'a> {
         CowVariant {
             name: Cow::Owned(v.name),
             data: v.data.into(),
-            doc: v.doc.into_iter().map(Cow::Owned).collect(),
+            doc: v.doc.into_iter().map(Cow::Owned).collect::<Vec<_>>().into(),
         }
     }
 }
@@ -243,7 +457,12 @@ impl<'a> From<OwnedVariant> for CowVariant<'a> {
 impl<'a> From<OwnedUnionType> for CowUnionType<'a> {
     fn from(u: OwnedUnionType) -> Self {
         CowUnionType {
-            fields: u.fields.into_iter().map(Into::into).collect(),
+            fields: u
+                .fields
+                .into_iter()
+                .map(Into::into)
+                .collect::<Vec<_>>()
+                .into(),
         }
     }
 }
@@ -364,8 +583,9 @@ impl<'a> TryFrom<&facet::StructType> for CowStructType<'a> {
     type Error = String;
 
     fn try_from(s: &facet::StructType) -> Result<Self, Self::Error> {
-        let fields: Result<Vec<_>, _> = s.fields.iter().map(|f| f.try_into()).collect();
-        Ok(CowStructType { fields: fields? })
+        Ok(CowStructType {
+            fields: ShapeList::Facet(&s.fields),
+        })
     }
 }
 
@@ -376,7 +596,7 @@ impl<'a> TryFrom<&facet::Field> for CowField<'a> {
         Ok(CowField {
             name: f.name.into(),
             shape: (f.shape)().try_into()?,
-            doc: f.doc.iter().map(|s| (*s).into()).collect(),
+            doc: ShapeList::Facet(f.doc),
         })
     }
 }
@@ -385,9 +605,8 @@ impl<'a> TryFrom<&facet::EnumType> for CowEnumType<'a> {
     type Error = String;
 
     fn try_from(e: &facet::EnumType) -> Result<Self, Self::Error> {
-        let variants: Result<Vec<_>, _> = e.variants.iter().map(|v| v.try_into()).collect();
         Ok(CowEnumType {
-            variants: variants?,
+            variants: ShapeList::Facet(&e.variants),
         })
     }
 }
@@ -399,7 +618,7 @@ impl<'a> TryFrom<&facet::Variant> for CowVariant<'a> {
         Ok(CowVariant {
             name: v.name.into(),
             data: (&v.data).try_into()?,
-            doc: v.doc.iter().map(|s| (*s).into()).collect(),
+            doc: ShapeList::Facet(v.doc),
         })
     }
 }
@@ -408,7 +627,8 @@ impl<'a> TryFrom<&facet::UnionType> for CowUnionType<'a> {
     type Error = String;
 
     fn try_from(u: &facet::UnionType) -> Result<Self, Self::Error> {
-        let fields: Result<Vec<_>, _> = u.fields.iter().map(|f| f.try_into()).collect();
-        Ok(CowUnionType { fields: fields? })
+        Ok(CowUnionType {
+            fields: ShapeList::Facet(&u.fields),
+        })
     }
 }

@@ -212,7 +212,11 @@ impl<'a> From<CowUserType<'a>> for OwnedUserType {
 impl<'a> From<CowStructType<'a>> for OwnedStructType {
     fn from(s: CowStructType<'a>) -> Self {
         OwnedStructType {
-            fields: s.fields.into_iter().map(Into::into).collect(),
+            fields: s
+                .fields
+                .into_iter()
+                .map(|c| c.into_owned().into())
+                .collect(),
         }
     }
 }
@@ -222,7 +226,11 @@ impl<'a> From<CowField<'a>> for OwnedField {
         OwnedField {
             name: f.name.into_owned(),
             shape: f.shape.into(),
-            doc: f.doc.into_iter().map(|s| s.into_owned()).collect(),
+            doc: f
+                .doc
+                .into_iter()
+                .map(|c| c.into_owned().into_owned())
+                .collect(),
         }
     }
 }
@@ -230,7 +238,11 @@ impl<'a> From<CowField<'a>> for OwnedField {
 impl<'a> From<CowEnumType<'a>> for OwnedEnumType {
     fn from(e: CowEnumType<'a>) -> Self {
         OwnedEnumType {
-            variants: e.variants.into_iter().map(Into::into).collect(),
+            variants: e
+                .variants
+                .into_iter()
+                .map(|c| c.into_owned().into())
+                .collect(),
         }
     }
 }
@@ -240,7 +252,11 @@ impl<'a> From<CowVariant<'a>> for OwnedVariant {
         OwnedVariant {
             name: v.name.into_owned(),
             data: v.data.into(),
-            doc: v.doc.into_iter().map(|s| s.into_owned()).collect(),
+            doc: v
+                .doc
+                .into_iter()
+                .map(|c| c.into_owned().into_owned())
+                .collect(),
         }
     }
 }
@@ -248,7 +264,11 @@ impl<'a> From<CowVariant<'a>> for OwnedVariant {
 impl<'a> From<CowUnionType<'a>> for OwnedUnionType {
     fn from(u: CowUnionType<'a>) -> Self {
         OwnedUnionType {
-            fields: u.fields.into_iter().map(Into::into).collect(),
+            fields: u
+                .fields
+                .into_iter()
+                .map(|c| c.into_owned().into())
+                .collect(),
         }
     }
 }

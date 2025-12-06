@@ -4,10 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-facet = "0.31.4"
-facet-core = "0.31.4"
-facet-reflect = "0.31.4"
+facet = { git = "ssh://git@github.com/cramt/facet.git", branch = "cramt/shapelike", package = "facet" }
+facet-core = { git = "ssh://git@github.com/cramt/facet.git", branch = "cramt/shapelike", package = "facet-core" }
+facet-reflect = { git = "ssh://git@github.com/cramt/facet.git", branch = "cramt/shapelike", package = "facet-reflect" }
+facet-shapelike = { git = "ssh://git@github.com/cramt/facet.git", branch = "cramt/shapelike", package = "facet-shapelike" }
+facet-diff = { git = "ssh://git@github.com/cramt/facet.git", branch = "cramt/shapelike", package = "facet-diff" }
 sea-query = { version = "0.32.7", default-features = false }
-
-[dev-dependencies]
-sea-query = { version = "0.32.7", features = ["backend-postgres"] }

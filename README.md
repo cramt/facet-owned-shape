@@ -11,8 +11,9 @@ Derive `Facet` on your structs, then convert the shape to a `sea_query::Table`.
 
 ```rust
 use facet::Facet;
-use facet_psql_schema::convert; // wrapper or directly TryFrom
-use sea_query::Table;
+use facet_psql_schema::PartialSchema;
+// Table is still available if you need to manipulate it manually
+// use facet_psql_schema::Table;
 
 #[derive(Facet)]
 struct User {
@@ -23,7 +24,11 @@ struct User {
 
 fn main() {
     let shape = User::SHAPE;
-    let table = Table::try_from(shape).expect("Schema conversion failed");
+    // Step 1: Convert Shape to PartialSchema
+    let schema = PartialSchema::try_from(shape).expect("Schema conversion failed");
+    
+    // Step 2: Access the generated table(s)
+    let table = schema.tables.first().expect("Expected at least one table");
     
     // table.name == "user"
     // table.columns include "id" (BigInt), "username" (Text), "is_active" (Boolean)

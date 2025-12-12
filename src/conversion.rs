@@ -27,77 +27,63 @@ impl fmt::Display for ConversionError {
 
 impl Error for ConversionError {}
 
-impl TryFrom<&facet::Shape> for Table {
+impl TryFrom<&facet::Shape> for PartialSchema {
     type Error = ConversionError;
 
     fn try_from(shape: &facet::Shape) -> Result<Self, Self::Error> {
-        // Get the struct type definition
-        let struct_type = match &shape.ty {
-            facet::Type::User(facet::UserType::Struct(s)) => s,
-            _ => return Err(ConversionError::NotAStruct(format!("{:?}", shape.ty))),
-        };
-
-        // Table name is the lowercase type identifier
-        let table_name = shape.type_identifier.to_lowercase();
-
-        // Convert each field to a column
-        let mut columns = Vec::new();
-        let mut pk_columns = Vec::new();
-
-        for field in struct_type.fields.iter() {
-            let column = field_to_column(field)?;
-            columns.push(column);
-
-            // Check for primary key attribute
-            for attr in field.attributes {
-                // Check if attribute is "psql::primary_key"
-                // attributes usually have ns and key
-                if attr.key == "primary_key" && attr.ns == Some("psql") {
-                    pk_columns.push(field.name.to_string());
-                }
+        match shape.ty {
+            facet::Type::User(facet::UserType::Struct(_)) => {
+                let table = shape_to_table(shape)?;
+                Ok(PartialSchema {
+                    tables: vec![table],
+                    views: Default::default(),
+                    materialized_views: Default::default(),
+                    enums: Default::default(),
+                    domains: Default::default(),
+                    composite_types: Default::default(),
+                    sequences: Default::default(),
+                    collations: Default::default(),
+                    functions: Default::default(),
+                })
             }
+            facet::Type::User(facet::UserType::Enum(ref e)) => enum_to_partial_schema(shape, e),
+            _ => Err(ConversionError::NotAStruct(format!("{:?}", shape.ty))),
         }
-
-        if pk_columns.len() > 1 {
-            return Err(ConversionError::MultiplePrimaryKeys(format!(
-                "Table '{}' has {} primary keys: {:?}",
-                table_name,
-                pk_columns.len(),
-                pk_columns
-            )));
-        }
-
-        let primary_key = if !pk_columns.is_empty() {
-            Some(PrimaryKey {
-                name: None,
-                columns: pk_columns,
-                using: None,
-                deferrable: None,
-            })
-        } else {
-            None
-        };
-
-        Ok(Table {
-            name: table_name,
-            columns,
-            primary_key,
-            uniques: vec![],
-            foreign_keys: vec![],
-            checks: vec![],
-            indexes: vec![],
-            options: TableOptions {
-                inherits: vec![],
-                temporary: false,
-                unlogged: false,
-                partitioned: None,
-                tablespace: None,
-                with_storage_params: Default::default(),
-            },
-            comment: None,
-            owned_sequences: vec![],
-        })
     }
+}
+
+fn shape_to_table(shape: &facet::Shape) -> Result<Table, ConversionError> {
+    // Get the struct type definition
+    let struct_type = match &shape.ty {
+        facet::Type::User(facet::UserType::Struct(s)) => s,
+        _ => return Err(ConversionError::NotAStruct(format!("{:?}", shape.ty))),
+    };
+
+    // Table name is the lowercase type identifier
+    let table_name = shape.type_identifier.to_lowercase();
+
+    // Process fields
+    let (columns, primary_key) = process_fields(&struct_type.fields, &table_name)?;
+
+    Ok(Table {
+        name: table_name,
+        columns,
+        primary_key,
+        uniques: vec![],
+        foreign_keys: vec![],
+        checks: vec![],
+        indexes: vec![],
+        options: TableOptions {
+            inherits: vec![],
+            temporary: false,
+            unlogged: false,
+            partitioned: None,
+            tablespace: None,
+            with_storage_params: Default::default(),
+        },
+        comment: None,
+        owned_sequences: vec![],
+    })
 }
 
 fn field_to_column(field: &facet::Field) -> Result<Column, ConversionError> {
@@ -119,6 +105,280 @@ fn field_to_column(field: &facet::Field) -> Result<Column, ConversionError> {
         comment: None,
         privileges: None,
     })
+}
+
+fn process_fields(
+    fields: &[facet::Field],
+    table_name: &str,
+) -> Result<(Vec<Column>, Option<PrimaryKey>), ConversionError> {
+    let mut columns = Vec::new();
+    let mut pk_columns = Vec::new();
+
+    for field in fields.iter() {
+        let column = field_to_column(field)?;
+        columns.push(column);
+
+        // Check for primary key attribute
+        for attr in field.attributes {
+            if attr.key == "primary_key" && attr.ns == Some("psql") {
+                pk_columns.push(field.name.to_string());
+            }
+        }
+    }
+
+    if pk_columns.len() > 1 {
+        return Err(ConversionError::MultiplePrimaryKeys(format!(
+            "Table '{}' has {} primary keys: {:?}",
+            table_name,
+            pk_columns.len(),
+            pk_columns
+        )));
+    }
+
+    let primary_key = if !pk_columns.is_empty() {
+        Some(PrimaryKey {
+            name: None,
+            columns: pk_columns,
+            using: None,
+            deferrable: None,
+        })
+    } else {
+        None
+    };
+
+    Ok((columns, primary_key))
+}
+
+fn enum_to_partial_schema(
+    shape: &facet::Shape,
+    enum_type: &facet::EnumType,
+) -> Result<PartialSchema, ConversionError> {
+    let base_name = shape.type_identifier.to_lowercase();
+    let mut tables = Vec::new();
+    let mut foreign_keys = Vec::new();
+    let mut main_columns = Vec::new();
+
+    // 1. Create columns for the main table
+    // Add primary key 'id'
+    main_columns.push(Column {
+        name: "id".to_string(),
+        data_type: DataType::BigSerial, // Or BigInt if managed externally
+        default: None,
+        nullable: false,
+        collation: None,
+        is_generated: true,
+        generation_expression: None,
+        is_identity: true,
+        identity_generation: Some(IdentityGeneration::Always),
+        comment: None,
+        privileges: None,
+    });
+
+    // Add dictionary/discriminant column
+    main_columns.push(Column {
+        name: "discriminant".to_string(),
+        data_type: DataType::Integer,
+        default: None,
+        nullable: false,
+        collation: None,
+        is_generated: false,
+        generation_expression: None,
+        is_identity: false,
+        identity_generation: None,
+        comment: Some("Discriminant for enum variant".to_string()),
+        privileges: None,
+    });
+
+    // 2. Process variants
+    for (_, variant) in enum_type.variants.iter().enumerate() {
+        let variant_name = variant.name.to_lowercase();
+        let variant_table_name = format!("{}_{}", base_name, variant_name);
+
+        // --- Variant Table ---
+        match &variant.data.kind {
+            facet::StructKind::Struct
+            | facet::StructKind::Tuple
+            | facet::StructKind::TupleStruct => {
+                // Create a table for this variant
+                // It needs an ID to be referenced
+                let mut variant_columns = Vec::new();
+                variant_columns.push(Column {
+                    name: "id".to_string(),
+                    data_type: DataType::BigSerial,
+                    default: None,
+                    nullable: false,
+                    collation: None,
+                    is_generated: true,
+                    generation_expression: None,
+                    is_identity: true,
+                    identity_generation: Some(IdentityGeneration::Always),
+                    comment: None,
+                    privileges: None,
+                });
+
+                let (fields_cols, _) = process_fields(&variant.data.fields, &variant_table_name)?;
+                variant_columns.extend(fields_cols);
+
+                let variant_table = Table {
+                    name: variant_table_name.clone(),
+                    columns: variant_columns,
+                    primary_key: Some(PrimaryKey {
+                        name: None, // explicit name?
+                        columns: vec!["id".to_string()],
+                        using: None,
+                        deferrable: None,
+                    }),
+                    uniques: vec![],
+                    foreign_keys: vec![],
+                    checks: vec![],
+                    indexes: vec![],
+                    options: empty_table_options(),
+                    comment: None,
+                    owned_sequences: vec![],
+                };
+                tables.push(variant_table);
+
+                // --- Main Table Reference ---
+                // Add FK column to main table
+                let fk_col_name = format!("{}_id", variant_name);
+                main_columns.push(Column {
+                    name: fk_col_name.clone(),
+                    data_type: DataType::BigInt,
+                    default: None,
+                    nullable: true, // Nullable because only one variant is active
+                    collation: None,
+                    is_generated: false,
+                    generation_expression: None,
+                    is_identity: false,
+                    identity_generation: None,
+                    comment: None,
+                    privileges: None,
+                });
+
+                // Add Foreign Key constraint to main table
+                foreign_keys.push(ForeignKey {
+                    name: None,
+                    columns: vec![fk_col_name.clone()],
+                    referenced_table: QualifiedName {
+                        schema: None,
+                        name: variant_table_name,
+                    },
+                    referenced_columns: Some(vec!["id".to_string()]),
+                    on_delete: Some(ReferentialAction::Cascade), // Deleting main row deletes variant row? Or vice versa? Usually cascade delete from parent to child.
+                    on_update: Some(ReferentialAction::NoAction),
+                    match_type: None,
+                    deferrable: None,
+                    initially: None,
+                });
+            }
+            facet::StructKind::Unit => {
+                // Unit variant - no extra data table needed?
+                // Or just a marker?
+                // User said "foreign keys to other new tables which represent either of those variants"
+                // If it's unit, maybe no table needed, but we still need to track it.
+                // For simplified logic matching request: "become 1 table ... with 3 fields (1 desc, 2 FKs)"
+                // But if A is Unit, it has no fields.
+                // Let's assume for now we still make a table for consistency, or strict optimization?
+                // The request example had fields in A and B.
+            }
+        }
+    }
+
+    // Generate CHECK constraint
+    // CHECK (
+    //   (CASE WHEN discriminant = 0 THEN variant_0_id IS NOT NULL ELSE variant_0_id IS NULL END) AND
+    //   (CASE WHEN discriminant = 1 THEN variant_1_id IS NOT NULL ELSE variant_1_id IS NULL END)
+    // )
+    // This ensures that IF discriminant is X, THEN id_X is set, AND (implicitly by logic) others should be null logic?
+    // Actually, "ELSE variant_X_id IS NULL" ensures that if discriminant != X, then id_X MUST be null.
+    // This is exactly what we want: rigid lockstep.
+
+    let mut check_parts: Vec<String> = Vec::new();
+    for (index, variant) in enum_type.variants.iter().enumerate() {
+        let variant_name = variant.name.to_lowercase();
+        match &variant.data.kind {
+            facet::StructKind::Struct
+            | facet::StructKind::Tuple
+            | facet::StructKind::TupleStruct => {
+                let col_name = format!("{}_id", variant_name);
+                check_parts.push(format!(
+                    "(CASE WHEN discriminant = {} THEN {} IS NOT NULL ELSE {} IS NULL END)",
+                    index, col_name, col_name
+                ));
+            }
+            // For Unit variants, we don't have an ID column, so we just ensure no other IDs are set?
+            // But wait, if unit variant is active, then ALL ID columns must be null.
+            // My loop above skips Unit variants for table creation, so there is no `unit_id` column.
+            // But we need to verify that if discriminant points to Unit, then all existing ID columns are NULL.
+            // AND the above loop only generates checks for existing columns.
+            // So if discriminant = unit_index, then the above checks:
+            // "CASE WHEN discriminant = struct_index ... ELSE struct_id IS NULL"
+            // Since discriminant != struct_index, it enforces struct_id IS NULL.
+            // So identifying unit variants implicitly works by enforcing all others to be null!
+            // WE JUST NEED TO ENSURE `CASE WHEN` covers the "ELSE" branch correctly for all columns.
+            _ => {}
+        }
+    }
+
+    let check_expression = if check_parts.is_empty() {
+        "1=1".to_string()
+    } else {
+        check_parts.join(" AND ")
+    };
+
+    let main_table = Table {
+        name: base_name,
+        columns: main_columns,
+        primary_key: Some(PrimaryKey {
+            name: None,
+            columns: vec!["id".to_string()],
+            using: None,
+            deferrable: None,
+        }),
+        uniques: vec![],
+        foreign_keys,
+        checks: vec![CheckConstraint {
+            name: Some("variant_integrity".to_string()),
+            expression: check_expression,
+            no_inherit: false,
+        }],
+        indexes: vec![],
+        options: TableOptions {
+            inherits: vec![],
+            temporary: false,
+            unlogged: false,
+            partitioned: None,
+            tablespace: None,
+            with_storage_params: Default::default(),
+        },
+        comment: None,
+        owned_sequences: vec![],
+    };
+
+    tables.push(main_table);
+
+    Ok(PartialSchema {
+        tables,
+        views: vec![],
+        materialized_views: vec![],
+        enums: vec![],
+        domains: vec![],
+        composite_types: vec![],
+        sequences: vec![],
+        collations: vec![],
+        functions: vec![],
+    })
+}
+
+fn empty_table_options() -> TableOptions {
+    TableOptions {
+        inherits: vec![],
+        temporary: false,
+        unlogged: false,
+        partitioned: None,
+        tablespace: None,
+        with_storage_params: Default::default(),
+    }
 }
 
 fn shape_to_data_type(shape: &facet::Shape) -> Result<(DataType, bool), ConversionError> {

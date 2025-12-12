@@ -1,6 +1,6 @@
 use facet::Facet;
 use facet_psql_schema as psql;
-use facet_psql_schema::{ConversionError, Table};
+use facet_psql_schema::{ConversionError, PartialSchema};
 
 #[derive(Facet)]
 struct DoublePk {
@@ -13,7 +13,7 @@ struct DoublePk {
 #[test]
 fn test_double_pk_fails() {
     let shape = DoublePk::SHAPE;
-    let result = Table::try_from(shape);
+    let result = PartialSchema::try_from(shape);
 
     assert!(result.is_err(), "Expected error for multiple primary keys");
     match result {

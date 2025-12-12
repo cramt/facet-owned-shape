@@ -225,8 +225,9 @@ fn test_all_primitive_numbers_shape() {
     println!("AllPrimitiveNumbers shape: {:#?}", shape);
 
     // TDD: Convert shape to table schema - this will fail until we implement conversion
-    let table =
-        Table::try_from(shape).expect("Failed to convert AllPrimitiveNumbers shape to Table");
+    let schema = PartialSchema::try_from(shape)
+        .expect("Failed to convert AllPrimitiveNumbers shape to PartialSchema");
+    let table = schema.tables.into_iter().next().unwrap();
 
     // Assert table name
     assert_eq!(
@@ -308,7 +309,9 @@ fn test_string_types_shape() {
     let shape = StringTypes::SHAPE;
     println!("StringTypes shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert StringTypes shape to Table");
+    let schema =
+        PartialSchema::try_from(shape).expect("Failed to convert StringTypes shape to Table");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "stringtypes");
     assert_eq!(table.columns.len(), 2, "Should have 2 string columns");
@@ -337,7 +340,9 @@ fn test_boolean_type_shape() {
     let shape = BooleanType::SHAPE;
     println!("BooleanType shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert BooleanType shape to Table");
+    let schema =
+        PartialSchema::try_from(shape).expect("Failed to convert BooleanType shape to Table");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "booleantype");
     assert_eq!(table.columns.len(), 2);
@@ -359,7 +364,9 @@ fn test_optional_fields_shape() {
     let shape = OptionalFields::SHAPE;
     println!("OptionalFields shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert OptionalFields shape to Table");
+    let schema =
+        PartialSchema::try_from(shape).expect("Failed to convert OptionalFields shape to Table");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "optionalfields");
     assert_eq!(table.columns.len(), 5);
@@ -420,7 +427,8 @@ fn test_vector_fields_shape() {
     let shape = VectorFields::SHAPE;
     println!("VectorFields shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert VectorFields");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert VectorFields");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "vectorfields");
     assert_eq!(
@@ -454,7 +462,8 @@ fn test_complex_collections_shape() {
     let shape = ComplexCollections::SHAPE;
     println!("ComplexCollections shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert ComplexCollections");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert ComplexCollections");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "complexcollections");
     assert_eq!(table.columns.len(), 3, "ComplexCollections has 3 fields");
@@ -492,7 +501,8 @@ fn test_user_with_address_shape() {
     let shape = UserWithAddress::SHAPE;
     println!("UserWithAddress shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert UserWithAddress");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert UserWithAddress");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "userwithaddress");
     assert_eq!(
@@ -538,14 +548,18 @@ fn test_status_enum_shape() {
     let shape = Status::SHAPE;
     println!("Status shape: {:#?}", shape);
 
-    // Note: Enums themselves don't convert to tables
-    // This would be used as a field type in a struct
-    // For now, we test that it doesn't panic
-    let result = Table::try_from(shape);
-    assert!(
-        result.is_err(),
-        "Enum itself should not convert to table (needs to be a struct field)"
+    let schema = PartialSchema::try_from(shape).expect("Status enum should convert to schema");
+    // Status is all Unit variants (Active, Inactive, Pending)
+    // Should produce 1 table "status"
+    assert_eq!(
+        schema.tables.len(),
+        1,
+        "Should have 1 table for unit-only enum"
     );
+    let table = &schema.tables[0];
+    assert_eq!(table.name, "status");
+    // id, discriminant
+    assert_eq!(table.columns.len(), 2);
 }
 
 #[test]
@@ -555,9 +569,65 @@ fn test_user_role_enum_shape() {
     let shape = UserRole::SHAPE;
     println!("UserRole shape: {:#?}", shape);
 
-    // Like Status, enum itself doesn't convert to table
-    let result = Table::try_from(shape);
-    assert!(result.is_err(), "Enum itself should not convert to table");
+    let schema = PartialSchema::try_from(shape).expect("UserRole enum should convert to schema");
+
+    // UserRole has:
+    // Guest (Unit)
+    // User { registration_date: u64 }
+    // Admin { level: u8, department: String }
+    // SuperAdmin (Unit)
+
+    // Should have:
+    // 1. userrole (main)
+    // 2. userrole_user (variant)
+    // 3. userrole_admin (variant)
+    // Total 3 tables
+
+    assert_eq!(
+        schema.tables.len(),
+        3,
+        "Should have 3 tables (main + 2 variants)"
+    );
+
+    let main_table = schema
+        .tables
+        .iter()
+        .find(|t| t.name == "userrole")
+        .expect("Main table missing");
+    let user_table = schema
+        .tables
+        .iter()
+        .find(|t| t.name == "userrole_user")
+        .expect("User variant table missing");
+    let admin_table = schema
+        .tables
+        .iter()
+        .find(|t| t.name == "userrole_admin")
+        .expect("Admin variant table missing");
+
+    // Verify variant table structure
+    assert!(
+        user_table
+            .columns
+            .iter()
+            .any(|c| c.name == "registration_date")
+    );
+    assert!(admin_table.columns.iter().any(|c| c.name == "level"));
+    assert!(admin_table.columns.iter().any(|c| c.name == "department"));
+
+    // Verify FKs on main table
+    assert!(
+        main_table
+            .foreign_keys
+            .iter()
+            .any(|fk| fk.referenced_table.name == "userrole_user")
+    );
+    assert!(
+        main_table
+            .foreign_keys
+            .iter()
+            .any(|fk| fk.referenced_table.name == "userrole_admin")
+    );
 }
 
 #[test]
@@ -567,7 +637,8 @@ fn test_user_with_status_shape() {
     let shape = UserWithStatus::SHAPE;
     println!("UserWithStatus shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert UserWithStatus");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert UserWithStatus");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "userwithstatus");
     assert_eq!(
@@ -605,7 +676,8 @@ fn test_metadata_container_shape() {
     let shape = MetadataContainer::SHAPE;
     println!("MetadataContainer shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert MetadataContainer");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert MetadataContainer");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "metadatacontainer");
     // HashMap maps to Jsonb
@@ -632,7 +704,8 @@ fn test_product_shape() {
     let shape = Product::SHAPE;
     println!("Product shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert Product");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert Product");
+    let table = schema.tables.into_iter().next().unwrap();
 
     let id = table.columns.iter().find(|c| c.name == "id").unwrap();
     assert!(matches!(id.data_type, DataType::Text));
@@ -664,7 +737,8 @@ fn test_coordinates_shape() {
     let shape = Coordinates::SHAPE;
     println!("Coordinates shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert Coordinates");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert Coordinates");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "coordinates");
     // Tuple struct - might have named or numbered fields
@@ -682,10 +756,11 @@ fn test_fixed_size_arrays_shape() {
     println!("FixedSizeArrays shape: {:#?}", shape);
 
     // Fixed-size arrays might not convert well
-    let result = Table::try_from(shape);
+    let result = PartialSchema::try_from(shape);
 
     match result {
-        Ok(table) => {
+        Ok(schema) => {
+            let table = schema.tables.into_iter().next().unwrap();
             assert_eq!(table.name, "fixedsizearrays");
             // Arrays should be present
             assert!(table.columns.len() > 0);
@@ -717,7 +792,8 @@ fn test_blog_post_shape() {
     let shape = BlogPost::SHAPE;
     println!("BlogPost shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert BlogPost");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert BlogPost");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "blogpost");
     // BlogPost should have title, content, tags, etc.
@@ -747,12 +823,13 @@ fn test_borrowed_data_shape() {
     // BorrowedData contains references (&'static str, &'a str)
     // References like &str actually work fine - they map to Text
     // So this conversion should succeed
-    let result = Table::try_from(shape);
+    let result = PartialSchema::try_from(shape);
 
     // For now, we allow it to succeed since &str is commonly used
     // True lifetime-parameterized types would be more complex
     match result {
-        Ok(table) => {
+        Ok(schema) => {
+            let table = schema.tables.into_iter().next().unwrap();
             assert_eq!(table.name.to_lowercase(), "borroweddata");
             // Should have fields that are references
             assert!(table.columns.len() > 0);
@@ -786,12 +863,13 @@ fn test_container_u64_shape() {
 
     // Generic types can't be converted to database schemas
     // The schema needs concrete types, not type parameters
-    let result = Table::try_from(shape);
+    let result = PartialSchema::try_from(shape);
 
     // This might succeed if the generic is monomorphized, but ideally should indicate generic limitation
     // For now, we just ensure it doesn't panic
     match result {
-        Ok(table) => {
+        Ok(schema) => {
+            let table = schema.tables.into_iter().next().unwrap();
             // If it succeeds, verify it at least has the 'value' field
             assert_eq!(table.name.to_lowercase(), "container");
             assert!(table.columns.iter().any(|c| c.name == "value"));
@@ -811,12 +889,13 @@ fn test_container_string_shape() {
 
     // Generic types can't be converted to database schemas
     // The schema needs concrete types, not type parameters
-    let result = Table::try_from(shape);
+    let result = PartialSchema::try_from(shape);
 
     // This might succeed if the generic is monomorphized, but ideally should indicate generic limitation
     // For now, we just ensure it doesn't panic
     match result {
-        Ok(table) => {
+        Ok(schema) => {
+            let table = schema.tables.into_iter().next().unwrap();
             // If it succeeds, verify it at least has the 'value' field
             assert_eq!(table.name.to_lowercase(), "container");
             assert!(table.columns.iter().any(|c| c.name == "value"));
@@ -834,7 +913,8 @@ fn test_organization_shape() {
     let shape = Organization::SHAPE;
     println!("Organization shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert Organization");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert Organization");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "organization");
     assert_eq!(
@@ -879,7 +959,8 @@ fn test_department_shape() {
     let shape = Department::SHAPE;
     println!("Department shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert Department");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert Department");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "department");
     assert_eq!(table.columns.len(), 3);
@@ -903,7 +984,8 @@ fn test_employee_shape() {
     let shape = Employee::SHAPE;
     println!("Employee shape: {:#?}", shape);
 
-    let table = Table::try_from(shape).expect("Failed to convert Employee");
+    let schema = PartialSchema::try_from(shape).expect("Failed to convert Employee");
+    let table = schema.tables.into_iter().next().unwrap();
 
     assert_eq!(table.name, "employee");
     // Employee has multiple fields

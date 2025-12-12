@@ -9,6 +9,7 @@ pub enum ConversionError {
     UnsupportedType(String),
     NotAStruct(String),
     MissingTypeInfo,
+    MultiplePrimaryKeys(String),
 }
 
 impl fmt::Display for ConversionError {
@@ -17,6 +18,9 @@ impl fmt::Display for ConversionError {
             ConversionError::UnsupportedType(msg) => write!(f, "Unsupported type: {}", msg),
             ConversionError::NotAStruct(msg) => write!(f, "Expected struct, got: {}", msg),
             ConversionError::MissingTypeInfo => write!(f, "Missing type information"),
+            ConversionError::MultiplePrimaryKeys(msg) => {
+                write!(f, "Multiple primary keys defined: {}", msg)
+            }
         }
     }
 }
@@ -52,6 +56,15 @@ impl TryFrom<&facet::Shape> for Table {
                     pk_columns.push(field.name.to_string());
                 }
             }
+        }
+
+        if pk_columns.len() > 1 {
+            return Err(ConversionError::MultiplePrimaryKeys(format!(
+                "Table '{}' has {} primary keys: {:?}",
+                table_name,
+                pk_columns.len(),
+                pk_columns
+            )));
         }
 
         let primary_key = if !pk_columns.is_empty() {

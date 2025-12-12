@@ -16,6 +16,7 @@ The conversion logic relies heavily on `facet::Shape` properties:
     - Namespace is strictly checked: `attr.ns == Some("psql")`.
     - Key is strictly checked: `attr.key == "primary_key"`.
     - *Note*: Ensure safe access to attributes; they are iterated directly.
+    - **Constraints**: Currently enforces strictly *one* primary key per table. Defining multiple PK attributes results in `ConversionError::MultiplePrimaryKeys`.
 
 ## "Gotchas" & Decisions
 1.  **Reference Types**:

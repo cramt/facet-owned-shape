@@ -159,18 +159,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "facet-owned-shape"
-version = "0.1.0"
-dependencies = [
- "facet",
- "facet-core",
- "facet-diff",
- "facet-reflect",
- "facet-shapelike",
- "sea-query",
-]
-
-[[package]]
 name = "facet-postcard"
 version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -190,6 +178,18 @@ dependencies = [
  "facet-core",
  "facet-reflect",
  "owo-colors",
+]
+
+[[package]]
+name = "facet-psql-schema"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "facet-core",
+ "facet-diff",
+ "facet-reflect",
+ "facet-shapelike",
+ "sea-query",
 ]
 
 [[package]]

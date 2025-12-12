@@ -38,15 +38,37 @@ impl TryFrom<&facet::Shape> for Table {
 
         // Convert each field to a column
         let mut columns = Vec::new();
+        let mut pk_columns = Vec::new();
+
         for field in struct_type.fields.iter() {
             let column = field_to_column(field)?;
             columns.push(column);
+
+            // Check for primary key attribute
+            for attr in field.attributes {
+                // Check if attribute is "psql::primary_key"
+                // attributes usually have ns and key
+                if attr.key == "primary_key" && attr.ns == Some("psql") {
+                    pk_columns.push(field.name.to_string());
+                }
+            }
         }
+
+        let primary_key = if !pk_columns.is_empty() {
+            Some(PrimaryKey {
+                name: None,
+                columns: pk_columns,
+                using: None,
+                deferrable: None,
+            })
+        } else {
+            None
+        };
 
         Ok(Table {
             name: table_name,
             columns,
-            primary_key: None,
+            primary_key,
             uniques: vec![],
             foreign_keys: vec![],
             checks: vec![],

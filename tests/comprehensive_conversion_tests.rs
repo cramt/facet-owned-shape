@@ -1,4 +1,5 @@
 use facet::Facet;
+use facet_psql_schema as psql;
 use std::collections::HashMap;
 
 /// Test struct with all primitive number types
@@ -111,6 +112,7 @@ struct UserWithStatus {
 /// Test struct with HashMap
 #[derive(Facet)]
 struct MetadataContainer {
+    #[facet(psql::primary_key)]
     id: String,
     metadata: HashMap<String, String>,
     settings: HashMap<String, i32>,
@@ -119,7 +121,8 @@ struct MetadataContainer {
 /// Test struct with mixed types
 #[derive(Facet)]
 struct Product {
-    id: u64,
+    #[facet(psql::primary_key)]
+    id: String,
     name: String,
     description: Option<String>,
     price: f64,
@@ -141,6 +144,7 @@ struct Coordinates {
 /// Test struct with array
 #[derive(Facet)]
 struct FixedSizeArrays {
+    #[facet(psql::primary_key)]
     id: u32,
     rgb_color: [u8; 3],
     transform_matrix: [f32; 9],
@@ -149,6 +153,7 @@ struct FixedSizeArrays {
 /// Test struct simulating a real database table
 #[derive(Facet)]
 struct BlogPost {
+    #[facet(psql::primary_key)]
     id: u64,
     title: String,
     slug: String,
@@ -170,6 +175,7 @@ struct BlogPost {
 /// Test struct with references and lifetimes
 #[derive(Facet)]
 struct BorrowedData<'a> {
+    #[facet(psql::primary_key)]
     id: u64,
     static_label: &'static str,
     borrowed_name: &'a str,
@@ -188,6 +194,7 @@ struct Container<T: 'static> {
 /// Complex nested structure
 #[derive(Facet)]
 struct Organization {
+    #[facet(psql::primary_key)]
     id: u64,
     name: String,
     departments: Vec<Department>,
@@ -195,6 +202,7 @@ struct Organization {
 
 #[derive(Facet)]
 struct Department {
+    #[facet(psql::primary_key)]
     id: u64,
     name: String,
     employees: Vec<Employee>,
@@ -211,7 +219,7 @@ struct Employee {
 
 #[test]
 fn test_all_primitive_numbers_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = AllPrimitiveNumbers::SHAPE;
     println!("AllPrimitiveNumbers shape: {:#?}", shape);
@@ -295,7 +303,7 @@ fn test_all_primitive_numbers_shape() {
 
 #[test]
 fn test_string_types_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = StringTypes::SHAPE;
     println!("StringTypes shape: {:#?}", shape);
@@ -324,7 +332,7 @@ fn test_string_types_shape() {
 
 #[test]
 fn test_boolean_type_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = BooleanType::SHAPE;
     println!("BooleanType shape: {:#?}", shape);
@@ -346,7 +354,7 @@ fn test_boolean_type_shape() {
 
 #[test]
 fn test_optional_fields_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = OptionalFields::SHAPE;
     println!("OptionalFields shape: {:#?}", shape);
@@ -407,7 +415,7 @@ fn test_optional_fields_shape() {
 
 #[test]
 fn test_vector_fields_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = VectorFields::SHAPE;
     println!("VectorFields shape: {:#?}", shape);
@@ -441,7 +449,7 @@ fn test_vector_fields_shape() {
 
 #[test]
 fn test_complex_collections_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = ComplexCollections::SHAPE;
     println!("ComplexCollections shape: {:#?}", shape);
@@ -479,7 +487,7 @@ fn test_complex_collections_shape() {
 
 #[test]
 fn test_user_with_address_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = UserWithAddress::SHAPE;
     println!("UserWithAddress shape: {:#?}", shape);
@@ -525,7 +533,7 @@ fn test_user_with_address_shape() {
 
 #[test]
 fn test_status_enum_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = Status::SHAPE;
     println!("Status shape: {:#?}", shape);
@@ -542,7 +550,7 @@ fn test_status_enum_shape() {
 
 #[test]
 fn test_user_role_enum_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = UserRole::SHAPE;
     println!("UserRole shape: {:#?}", shape);
@@ -554,7 +562,7 @@ fn test_user_role_enum_shape() {
 
 #[test]
 fn test_user_with_status_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = UserWithStatus::SHAPE;
     println!("UserWithStatus shape: {:#?}", shape);
@@ -592,7 +600,7 @@ fn test_user_with_status_shape() {
 
 #[test]
 fn test_metadata_container_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = MetadataContainer::SHAPE;
     println!("MetadataContainer shape: {:#?}", shape);
@@ -607,25 +615,51 @@ fn test_metadata_container_shape() {
         matches!(metadata_col.data_type, DataType::Jsonb),
         "HashMap should map to Jsonb"
     );
+
+    assert!(
+        table
+            .primary_key
+            .as_ref()
+            .map_or(false, |pk| pk.columns == vec!["id"]),
+        "Expected 'id' to be the primary key"
+    );
 }
 
 #[test]
 fn test_product_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = Product::SHAPE;
     println!("Product shape: {:#?}", shape);
 
     let table = Table::try_from(shape).expect("Failed to convert Product");
 
-    assert_eq!(table.name, "product");
-    // Product should have various fields with mixed types
-    assert!(table.columns.len() > 0, "Product should have fields");
+    let id = table.columns.iter().find(|c| c.name == "id").unwrap();
+    assert!(matches!(id.data_type, DataType::Text));
+
+    assert!(
+        table
+            .primary_key
+            .as_ref()
+            .map_or(false, |pk| pk.columns == vec!["id"]),
+        "Expected 'id' to be the primary key"
+    );
+
+    let id = table.columns.iter().find(|c| c.name == "id").unwrap();
+    assert!(matches!(id.data_type, DataType::Text));
+
+    assert!(
+        table
+            .primary_key
+            .as_ref()
+            .map_or(false, |pk| pk.columns == vec!["id"]),
+        "Expected 'id' to be the primary key"
+    );
 }
 
 #[test]
 fn test_coordinates_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = Coordinates::SHAPE;
     println!("Coordinates shape: {:#?}", shape);
@@ -642,7 +676,7 @@ fn test_coordinates_shape() {
 
 #[test]
 fn test_fixed_size_arrays_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = FixedSizeArrays::SHAPE;
     println!("FixedSizeArrays shape: {:#?}", shape);
@@ -655,6 +689,20 @@ fn test_fixed_size_arrays_shape() {
             assert_eq!(table.name, "fixedsizearrays");
             // Arrays should be present
             assert!(table.columns.len() > 0);
+            assert!(
+                table
+                    .primary_key
+                    .as_ref()
+                    .map_or(false, |pk| pk.columns == vec!["id"]),
+                "Expected 'id' to be the primary key"
+            );
+            assert!(
+                table
+                    .primary_key
+                    .as_ref()
+                    .map_or(false, |pk| pk.columns == vec!["id"]),
+                "Expected 'id' to be the primary key"
+            );
         }
         Err(_) => {
             // Also acceptable - arrays might not be fully supported yet
@@ -664,7 +712,7 @@ fn test_fixed_size_arrays_shape() {
 
 #[test]
 fn test_blog_post_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = BlogPost::SHAPE;
     println!("BlogPost shape: {:#?}", shape);
@@ -680,11 +728,19 @@ fn test_blog_post_shape() {
             .iter()
             .any(|c| c.name == "title" || c.name == "content")
     );
+
+    assert!(
+        table
+            .primary_key
+            .as_ref()
+            .map_or(false, |pk| pk.columns == vec!["id"]),
+        "Expected 'id' to be the primary key"
+    );
 }
 
 #[test]
 fn test_borrowed_data_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = BorrowedData::SHAPE;
     println!("BorrowedData shape: {:#?}", shape);
@@ -700,6 +756,20 @@ fn test_borrowed_data_shape() {
             assert_eq!(table.name.to_lowercase(), "borroweddata");
             // Should have fields that are references
             assert!(table.columns.len() > 0);
+            assert!(
+                table
+                    .primary_key
+                    .as_ref()
+                    .map_or(false, |pk| pk.columns == vec!["id"]),
+                "Expected 'id' to be the primary key"
+            );
+            assert!(
+                table
+                    .primary_key
+                    .as_ref()
+                    .map_or(false, |pk| pk.columns == vec!["id"]),
+                "Expected 'id' to be the primary key"
+            );
         }
         Err(_) => {
             // Also acceptable if we want to reject reference types
@@ -709,7 +779,7 @@ fn test_borrowed_data_shape() {
 
 #[test]
 fn test_container_u64_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = Container::<u64>::SHAPE;
     println!("Container<u64> shape: {:#?}", shape);
@@ -734,7 +804,7 @@ fn test_container_u64_shape() {
 
 #[test]
 fn test_container_string_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = Container::<String>::SHAPE;
     println!("Container<String> shape: {:#?}", shape);
@@ -759,7 +829,7 @@ fn test_container_string_shape() {
 
 #[test]
 fn test_organization_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = Organization::SHAPE;
     println!("Organization shape: {:#?}", shape);
@@ -792,11 +862,43 @@ fn test_organization_shape() {
         "Vec<Department> should map to Jsonb"
     );
     assert!(!departments.nullable);
+
+    assert!(
+        table
+            .primary_key
+            .as_ref()
+            .map_or(false, |pk| pk.columns == vec!["id"]),
+        "Expected 'id' to be the primary key"
+    );
+}
+
+#[test]
+fn test_department_shape() {
+    use facet_psql_schema::*;
+
+    let shape = Department::SHAPE;
+    println!("Department shape: {:#?}", shape);
+
+    let table = Table::try_from(shape).expect("Failed to convert Department");
+
+    assert_eq!(table.name, "department");
+    assert_eq!(table.columns.len(), 3);
+
+    let id = table.columns.iter().find(|c| c.name == "id").unwrap();
+    assert!(matches!(id.data_type, DataType::BigInt));
+
+    assert!(
+        table
+            .primary_key
+            .as_ref()
+            .map_or(false, |pk| pk.columns == vec!["id"]),
+        "Expected 'id' to be the primary key"
+    );
 }
 
 #[test]
 fn test_employee_shape() {
-    use facet_owned_shape::*;
+    use facet_psql_schema::*;
 
     let shape = Employee::SHAPE;
     println!("Employee shape: {:#?}", shape);

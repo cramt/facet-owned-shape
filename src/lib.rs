@@ -3,7 +3,17 @@ use std::{borrow::Cow, collections::HashMap};
 use facet::Facet;
 
 mod conversion;
+pub mod relations;
 pub use conversion::ConversionError;
+
+facet::define_attr_grammar! {
+    ns "psql";
+    crate_path ::facet_psql_schema;
+
+    pub enum Attr {
+        PrimaryKey,
+    }
+}
 
 #[derive(Facet, Clone)]
 pub struct Schema {

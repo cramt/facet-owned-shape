@@ -496,6 +496,7 @@ impl PartialSchema {
 
         stmts.push(format!("CREATE SCHEMA IF NOT EXISTS {};", schema_name));
 
+        // -- Pass 1: Types & Sequences --
         // Enums
         for e in &self.enums {
             let vars = e
@@ -594,7 +595,7 @@ impl PartialSchema {
             }
         }
 
-        // Tables
+        // -- Pass 2: Base Tables (No Indicies, No FKs) --
         for t in &self.tables {
             let q = format!("{}.{}", schema_name, t.name);
             let cols = t
@@ -634,7 +635,7 @@ impl PartialSchema {
             table_stmt.push(';');
             stmts.push(table_stmt);
 
-            // Unique constraints
+            // Unique constraints (Safe to add now as they usually refer to local cols)
             if !t.uniques.is_empty() {
                 for u in &t.uniques {
                     let name = u
@@ -653,7 +654,7 @@ impl PartialSchema {
                 }
             }
 
-            // Check constraints
+            // Check constraints (Safe to add now)
             if !t.checks.is_empty() {
                 for ck in &t.checks {
                     if let Some(nm) = &ck.name {
@@ -666,8 +667,131 @@ impl PartialSchema {
                     }
                 }
             }
+        }
 
-            // Foreign keys
+        // -- Pass 3: Views --
+        for v in &self.views {
+            let q = format!("{}.{}", schema_name, v.name);
+            let stmt = if v.materialized {
+                format!("CREATE MATERIALIZED VIEW {} AS\n{};", q, v.definition)
+            } else {
+                format!("CREATE VIEW {} AS\n{};", q, v.definition)
+            };
+            stmts.push(stmt);
+            if let Some(c) = &v.comment {
+                stmts.push(format!("COMMENT ON VIEW {} IS '{}';", q, esc(c)));
+            }
+        }
+        for mv in &self.materialized_views {
+            let q = format!("{}.{}", schema_name, mv.name);
+            stmts.push(format!(
+                "CREATE MATERIALIZED VIEW {} AS\n{};",
+                q, mv.definition
+            ));
+            if let Some(c) = &mv.comment {
+                stmts.push(format!(
+                    "COMMENT ON MATERIALIZED VIEW {} IS '{}';",
+                    q,
+                    esc(c)
+                ));
+            }
+        }
+
+        // -- Pass 4: Indexes --
+        for t in &self.tables {
+            let qtable = format!("{}.{}", schema_name, t.name);
+            for idx in &t.indexes {
+                let idx_name = if idx.name.is_empty() {
+                    // Generate a name if empty
+                    format!(
+                        "{}_idx_{}",
+                        t.name,
+                        idx.columns
+                            .iter()
+                            .map(|c| match &c.expr {
+                                IndexExpr::Column(n) => n.as_str(),
+                                _ => "expr",
+                            })
+                            .collect::<Vec<_>>()
+                            .join("_")
+                    )
+                } else {
+                    idx.name.clone()
+                };
+
+                // If it's a primary key index, we likely already handled it via PRIMARY KEY constraint.
+                // But if explicitly defined in indexes, maybe we want it explicit?
+                // Usually `is_primary` implies it backs the PK.
+                if idx.is_primary {
+                    continue;
+                }
+
+                let method = idx.method.as_deref().unwrap_or("btree");
+                let unique = if idx.unique { "UNIQUE " } else { "" };
+                let concurrent = if idx.concurrently {
+                    "CONCURRENTLY "
+                } else {
+                    ""
+                };
+
+                let mut cols_str = Vec::new();
+                for col in &idx.columns {
+                    let expr = match &col.expr {
+                        IndexExpr::Column(c) => c.clone(),
+                        IndexExpr::Expression(e) => format!("({})", e),
+                    };
+                    let mut def = expr;
+                    if let Some(coll) = &col.collate {
+                        def.push_str(&format!(" COLLATE {}", coll));
+                    }
+                    if let Some(op) = &col.opclass {
+                        def.push_str(&format!(" {}", op));
+                    }
+                    if let Some(order) = &col.order {
+                        match order {
+                            SortOrder::Asc => def.push_str(" ASC"),
+                            SortOrder::Desc => def.push_str(" DESC"),
+                        }
+                    }
+                    if let Some(nulls) = &col.nulls_order {
+                        match nulls {
+                            NullsOrder::First => def.push_str(" NULLS FIRST"),
+                            NullsOrder::Last => def.push_str(" NULLS LAST"),
+                        }
+                    }
+                    cols_str.push(def);
+                }
+
+                let mut stmt = format!(
+                    "CREATE {}INDEX {}{} ON {} USING {} ({})",
+                    unique,
+                    concurrent,
+                    idx_name,
+                    qtable,
+                    method,
+                    cols_str.join(", ")
+                );
+
+                if !idx.include.is_empty() {
+                    stmt.push_str(&format!(" INCLUDE ({})", idx.include.join(", ")));
+                }
+
+                if let Some(pred) = &idx.predicate {
+                    stmt.push_str(&format!(" WHERE {}", pred));
+                }
+
+                if let Some(ts) = &idx.tablespace {
+                    stmt.push_str(&format!(" TABLESPACE {}", ts));
+                }
+
+                stmt.push(';');
+                stmts.push(stmt);
+            }
+        }
+
+        // -- Pass 5: Foreign Keys --
+        for t in &self.tables {
+            let q = format!("{}.{}", schema_name, t.name);
             if !t.foreign_keys.is_empty() {
                 for fk in &t.foreign_keys {
                     let name = fk
@@ -718,36 +842,6 @@ impl PartialSchema {
                     stmt.push(';');
                     stmts.push(stmt);
                 }
-            }
-        }
-
-        // Views
-        for v in &self.views {
-            let q = format!("{}.{}", schema_name, v.name);
-            let stmt = if v.materialized {
-                format!("CREATE MATERIALIZED VIEW {} AS\n{};", q, v.definition)
-            } else {
-                format!("CREATE VIEW {} AS\n{};", q, v.definition)
-            };
-            stmts.push(stmt);
-            if let Some(c) = &v.comment {
-                stmts.push(format!("COMMENT ON VIEW {} IS '{}';", q, esc(c)));
-            }
-        }
-
-        // materialized_views map (if separate)
-        for mv in &self.materialized_views {
-            let q = format!("{}.{}", schema_name, mv.name);
-            stmts.push(format!(
-                "CREATE MATERIALIZED VIEW {} AS\n{};",
-                q, mv.definition
-            ));
-            if let Some(c) = &mv.comment {
-                stmts.push(format!(
-                    "COMMENT ON MATERIALIZED VIEW {} IS '{}';",
-                    q,
-                    esc(c)
-                ));
             }
         }
 

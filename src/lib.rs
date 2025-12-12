@@ -2,6 +2,9 @@ use std::{borrow::Cow, collections::HashMap};
 
 use facet::Facet;
 
+mod conversion;
+pub use conversion::ConversionError;
+
 #[derive(Facet, Clone)]
 pub struct Schema {
     /// Schema name (e.g. "public", "pg_catalog")
